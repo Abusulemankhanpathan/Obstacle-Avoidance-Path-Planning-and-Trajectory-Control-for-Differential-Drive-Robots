@@ -72,13 +72,14 @@ This system transforms discrete waypoints into smooth, dynamically feasible traj
 
 ```mermaid
 graph LR
-    A[Path Planner / Waypoints] --> B[path_smoothing.py]
-    B --> C[trajectory_generator.py]
-    C --> D[follower_node.py]
-    D -->|/cmd_vel| E[Robot (Simulation)]
-    E -->|/odom| D
-    D -->|/path_to_visualize| F[visualizer.py]
-    F -->|/path_visualization| G[RViz]
+    A["Path Planner / Waypoints"] --> B["path_smoothing.py"]
+    B --> C["trajectory_generator.py"]
+    C --> D["follower_node.py"]
+    D -->|"cmd_vel"| E["Robot (Simulation)"]
+    E -->|"odom"| D
+    D -->|"path_to_visualize"| F["visualizer.py"]
+    F -->|"path_visualization"| G["RViz"]
+
 ```
 
 ---

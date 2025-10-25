@@ -1,0 +1,13 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ROS2 build folders
+build/
+install/
+log/
+
+# Editor / OS
+.DS_Store
+*.swp

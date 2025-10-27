@@ -109,7 +109,7 @@ mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
 
 # Clone this repository
-git clone <https://github.com/Abusulemankhanpathan/Obstacle-Avoidance-Path-Planning-and-Trajectory-Control-for-Differential-Drive-Robots.git> path_planning_assignment
+git clone https://github.com/Abusulemankhanpathan/Obstacle-Avoidance-Path-Planning-and-Trajectory-Control-for-Differential-Drive-Robots.git path_planning_assignment
 
 # Build the package
 cd ~/ros2_ws

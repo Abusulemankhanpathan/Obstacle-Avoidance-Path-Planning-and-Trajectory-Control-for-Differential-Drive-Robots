@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Pure Pursuit Trajectory Follower for TurtleBot3
+Pure Pursuit Trajectory Follower for TurtleBot3 - YAML Parameter Support
 Subscribes to /odom and follows a given trajectory.
 Publishes cmd_vel commands and trajectory visualization.
+All parameters configurable via YAML file.
 """
 
 import rclpy
@@ -17,13 +18,51 @@ class TrajectoryFollower(Node):
     def __init__(self):
         super().__init__('trajectory_follower')
 
-        # Parameters
+        # Declare all parameters with defaults
         self.declare_parameter('lookahead_distance', 0.1)
         self.declare_parameter('max_linear_vel', 0.15)
         self.declare_parameter('max_angular_vel', 1.5)
         self.declare_parameter('kp_ang', 2.0)
         self.declare_parameter('goal_tolerance', 0.15)
         self.declare_parameter('waypoint_tolerance', 0.1)
+        
+        # Advanced controller parameters
+        self.declare_parameter('use_advanced_controller', False)
+        self.declare_parameter('advanced_lookahead', 0.6)
+        self.declare_parameter('advanced_v_max', 0.22)
+        self.declare_parameter('advanced_kp', 1.8)
+        self.declare_parameter('advanced_ki', 0.0)
+        self.declare_parameter('advanced_kd', 0.04)
+        self.declare_parameter('advanced_max_w', 1.2)
+        self.declare_parameter('advanced_alpha', 0.45)
+        self.declare_parameter('advanced_max_dv_per_sec', 0.6)
+        
+        # Path smoothing parameters
+        self.declare_parameter('smoothness', 0.35)
+        self.declare_parameter('num_smooth_points', 400)
+        
+        # Waypoints as flattened list [x1, y1, x2, y2, ...]
+        self.declare_parameter('waypoints_flat', [
+            -2.0, -0.5,
+            -1.5, -0.5,
+            -1.0, -0.45,
+            -0.5, -0.48,
+            0.0, -0.5,
+            0.5, -0.5,
+            1.0, -0.45,
+            1.5, -0.48,
+            2.0, -0.5,
+            1.5, 0.0,
+            2.0, 0.5,
+            1.0, 0.5,
+            0.0, 0.5,
+            -0.5, 0.48,
+            -1.0, 0.45,
+            -1.5, 0.5,
+            -2.0, 0.5,
+            -2.0, 0.0,
+            -2.0, -0.5
+        ])
 
         # Get parameters
         self.lookahead_distance = self.get_parameter('lookahead_distance').value
@@ -32,34 +71,24 @@ class TrajectoryFollower(Node):
         self.kp_ang = self.get_parameter('kp_ang').value
         self.goal_tolerance = self.get_parameter('goal_tolerance').value
         self.waypoint_tolerance = self.get_parameter('waypoint_tolerance').value
+        
+        self.use_advanced_controller = self.get_parameter('use_advanced_controller').value
+        self.smoothness = self.get_parameter('smoothness').value
+        self.num_smooth_points = self.get_parameter('num_smooth_points').value
 
         # Robot state
         self.x = 0.0
         self.y = 0.0
         self.yaw = 0.0
 
-        # Fixed trajectory - removed duplicates and overlapping points
-        self.trajectory = [
-            (-2.0, -0.5),
-            (-1.5, -0.5),
-            (-1.0, -0.45),
-            (-0.5, -0.48),
-            (0.0, -0.5),
-            (0.5, -0.5),
-            (1.0, -0.45),
-            (1.5, -0.48),
-            (2.0, -0.5),
-            (1.50, 0.0),
-            (2.0, 0.5),
-            (1.0, 0.50),
-            (0.0, 0.50),
-            (-0.5, 0.48),
-            (-1.0, 0.45),
-            (-1.5, 0.5),
-            (-2.0, 0.5),
-            (-2.0, 0.0),
-            (-2.0, -0.50)  # End point
-        ]
+        # Load trajectory from flattened YAML parameters
+        waypoints_flat = self.get_parameter('waypoints_flat').value
+        self.trajectory = []
+        
+        # Convert flattened list to list of tuples
+        for i in range(0, len(waypoints_flat), 2):
+            if i + 1 < len(waypoints_flat):
+                self.trajectory.append((float(waypoints_flat[i]), float(waypoints_flat[i+1])))
         
         # Current waypoint index
         self.current_waypoint_idx = 0
@@ -79,10 +108,15 @@ class TrajectoryFollower(Node):
         self.vis_timer = self.create_timer(0.1, self.publish_trajectory_visualization)  # 10 Hz
 
         self.get_logger().info(
-            f"TrajectoryFollower initialized\n"
+            f"TrajectoryFollower initialized with YAML parameters\n"
             f"- Waypoints: {len(self.trajectory)}\n"
-            f"- Publishing trajectory to /path_to_visualize\n"
-            f"- Publishing cmd_vel to /cmd_vel"
+            f"- Lookahead: {self.lookahead_distance}m\n"
+            f"- Max Linear Vel: {self.max_linear_vel} m/s\n"
+            f"- Max Angular Vel: {self.max_angular_vel} rad/s\n"
+            f"- Kp Angular: {self.kp_ang}\n"
+            f"- Goal Tolerance: {self.goal_tolerance}m\n"
+            f"- Waypoint Tolerance: {self.waypoint_tolerance}m\n"
+            f"- Use Advanced Controller: {self.use_advanced_controller}"
         )
 
     def odom_callback(self, msg: Odometry):

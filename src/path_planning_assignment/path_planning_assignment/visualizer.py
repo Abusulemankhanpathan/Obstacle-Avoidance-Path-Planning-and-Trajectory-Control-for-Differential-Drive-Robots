@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 """
-Enhanced Path Visualizer for RViz - Professional Style with Dynamic Updates
+Enhanced Path Visualizer for RViz - YAML Parameter Support
 Subscribes to /path_to_visualize (trajectory from follower) and /odom
-Creates clear visualization with:
-- Green/Orange/Yellow waypoints (passed/current/upcoming)
-- Cyan planned path (thin, semi-transparent)
-- Dark purple actual path (thick, dominant)
-- Green start point and red end point
+All visualization parameters configurable via YAML file.
 """
 
 import rclpy
@@ -21,12 +17,13 @@ class PathVisualizer(Node):
     def __init__(self):
         super().__init__("path_visualizer")
 
-        # Parameters
-        self.declare_parameter('trail_min_distance', 0.02)  # Min distance between actual path points
-        self.declare_parameter('planned_path_width', 0.07)  # Width of planned path line
-        self.declare_parameter('actual_path_width', 0.15)  # Width of actual path line
-        self.declare_parameter('waypoint_radius', 0.08)  # Radius of waypoint spheres
+        # Declare parameters with defaults
+        self.declare_parameter('trail_min_distance', 0.02)
+        self.declare_parameter('planned_path_width', 0.07)
+        self.declare_parameter('actual_path_width', 0.15)
+        self.declare_parameter('waypoint_radius', 0.08)
         
+        # Get parameters
         self.trail_min_distance = self.get_parameter('trail_min_distance').value
         self.planned_path_width = self.get_parameter('planned_path_width').value
         self.actual_path_width = self.get_parameter('actual_path_width').value
@@ -59,10 +56,11 @@ class PathVisualizer(Node):
         self.end_point = None
 
         self.get_logger().info(
-            "PathVisualizer started - PROFESSIONAL MODE 🎯\n"
-            "- Green/Orange/Yellow waypoints (passed/current/upcoming)\n"
-            "- Cyan planned path (thin, semi-transparent)\n"
-            "- Dark purple actual path (thick, dominant)\n"
+            "PathVisualizer started with YAML parameters 🎯\n"
+            f"- Trail min distance: {self.trail_min_distance}m\n"
+            f"- Planned path width: {self.planned_path_width}m\n"
+            f"- Actual path width: {self.actual_path_width}m\n"
+            f"- Waypoint radius: {self.waypoint_radius}m\n"
             "- Add '/path_visualization' MarkerArray in RViz\n"
             "- Fixed frame: 'odom'"
         )
@@ -90,10 +88,6 @@ class PathVisualizer(Node):
 
     def odom_callback(self, msg: Odometry):
         """Update robot position and build actual path trail."""
-        if not msg.pose.pose.position.x or not msg.pose.pose.position.y:
-            self.get_logger().warn("No odometry data received.")
-            return
-        
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
         
@@ -250,7 +244,6 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
-
 
 
 

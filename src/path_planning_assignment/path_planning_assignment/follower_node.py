@@ -17,7 +17,7 @@ from nav_msgs.msg import Odometry
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA
 
-# === External modules from your project ===
+# Project modules
 from controller import AdvancedController                 # controller.py
 from path_smoothing import smooth_path                    # path_smoothing.py
 from trajectory_generator import generate_trajectory      # trajectory_generator.py
@@ -53,28 +53,9 @@ class TrajectoryFollower(Node):
         self.declare_parameter('smoothness', 0.35)
         self.declare_parameter('num_smooth_points', 400)
 
-        # Waypoints (flattened list)
-        self.declare_parameter('waypoints_flat', [
-            -2.0, -0.5,
-            -1.5, -0.5,
-            -1.0, -0.45,
-            -0.5, -0.48,
-            0.0, -0.5,
-            0.5, -0.5,
-            1.0, -0.45,
-            1.5, -0.48,
-            2.0, -0.5,
-            1.5, 0.0,
-            2.0, 0.5,
-            1.0, 0.5,
-            0.0, 0.5,
-            -0.5, 0.48,
-            -1.0, 0.45,
-            -1.5, 0.5,
-            -2.0, 0.5,
-            -2.0, 0.0,
-            -2.0, -0.5
-        ])
+        # Waypoints in two formats: prefer 'waypoints' (pairs); fallback to 'waypoints_flat'
+        self.declare_parameter('waypoints', [])
+        self.declare_parameter('waypoints_flat', [])
 
         # --------------------
         # Read parameters
@@ -110,12 +91,18 @@ class TrajectoryFollower(Node):
         # --------------------
         # Build trajectory(s)
         # --------------------
-        # Convert flattened waypoints → list[(x,y)]
-        flat = self.get_parameter('waypoints_flat').value
+        # Prefer nested 'waypoints' pairs; fallback to 'waypoints_flat'
+        pairs = self.get_parameter('waypoints').value or []
         self.raw_waypoints = []
-        for i in range(0, len(flat), 2):
-            if i + 1 < len(flat):
-                self.raw_waypoints.append((float(flat[i]), float(flat[i + 1])))
+        if pairs:
+            for p in pairs:
+                if isinstance(p, (list, tuple)) and len(p) == 2:
+                    self.raw_waypoints.append((float(p[0]), float(p[1])))
+        else:
+            flat = self.get_parameter('waypoints_flat').value or []
+            for i in range(0, len(flat), 2):
+                if i + 1 < len(flat):
+                    self.raw_waypoints.append((float(flat[i]), float(flat[i + 1])))
 
         # For visualization & progression
         self.vis_traj_xy = []   # list[(x,y)] remaining path the visualizer expects
@@ -124,8 +111,7 @@ class TrajectoryFollower(Node):
 
         # Controller & trajectory storage
         self.adv_controller = None
-        self.traj_for_control = []  # list of dicts: {"x","y","kappa","v"} in advanced mode
-                                    # or list of dicts: {"x","y"} in pure pursuit mode
+        self.traj_for_control = []  # list of dicts for advanced OR pure pursuit
 
         if self.use_advanced:
             # Smooth → curvature → time-param trajectory
@@ -138,7 +124,7 @@ class TrajectoryFollower(Node):
             rich = generate_trajectory(
                 smoothed,
                 v_max=self.adv_v_max,
-                a_max=self.adv_max_dv_per_sec  # using same param name for accel budget
+                a_max=self.adv_max_dv_per_sec  # reuse as accel budget
             )  # [{"x","y","kappa","s","v","t"}, ...]
 
             # Build controller trajectory (SIGNED kappa + v)
@@ -179,7 +165,7 @@ class TrajectoryFollower(Node):
         self.get_logger().info(
             "TrajectoryFollower initialized\n"
             f"- Mode: {'AdvancedController' if self.use_advanced else 'Pure Pursuit'}\n"
-            f"- Waypoints in YAML: {len(self.raw_waypoints)}\n"
+            f"- Waypoints loaded: {len(self.raw_waypoints)}\n"
             f"- Visualization points: {len(self.vis_traj_xy)}\n"
             f"- Lookahead: {self.adv_lookahead if self.use_advanced else self.lookahead_distance} m\n"
             f"- V_max: {self.adv_v_max if self.use_advanced else self.max_linear_vel} m/s\n"
@@ -217,11 +203,9 @@ class TrajectoryFollower(Node):
             traj.color = ColorRGBA(r=1.0, g=1.0, b=1.0, a=0.5)  # semi-transparent white
 
             for i in range(self.current_idx, len(self.vis_traj_xy)):
-                pt_xy = self.vis_traj_xy[i]
+                pxy = self.vis_traj_xy[i]
                 p = Point()
-                p.x = float(pt_xy[0])
-                p.y = float(pt_xy[1])
-                p.z = 0.05
+                p.x = float(pxy[0]); p.y = float(pxy[1]); p.z = 0.05
                 traj.points.append(p)
 
             ma.markers.append(traj)
@@ -235,15 +219,9 @@ class TrajectoryFollower(Node):
             wp.id = i
             wp.type = Marker.SPHERE
             wp.action = Marker.ADD
-            wp.scale.x = 0.06
-            wp.scale.y = 0.06
-            wp.scale.z = 0.06
-
-            if i == self.current_idx:
-                wp.color = ColorRGBA(r=0.0, g=1.0, b=1.0, a=0.8)  # current target (bright cyan)
-            else:
-                wp.color = ColorRGBA(r=0.5, g=0.8, b=1.0, a=0.4)  # future (dim cyan)
-
+            wp.scale.x = 0.06; wp.scale.y = 0.06; wp.scale.z = 0.06
+            wp.color = ColorRGBA(r=0.0, g=1.0, b=1.0, a=0.8) if i == self.current_idx \
+                       else ColorRGBA(r=0.5, g=0.8, b=1.0, a=0.4)
             wp.pose.position.x = float(self.vis_traj_xy[i][0])
             wp.pose.position.y = float(self.vis_traj_xy[i][1])
             wp.pose.position.z = 0.05
@@ -260,9 +238,7 @@ class TrajectoryFollower(Node):
             tgt.id = 1000
             tgt.type = Marker.CYLINDER
             tgt.action = Marker.ADD
-            tgt.scale.x = 0.15
-            tgt.scale.y = 0.15
-            tgt.scale.z = 0.01
+            tgt.scale.x = 0.15; tgt.scale.y = 0.15; tgt.scale.z = 0.01
             tgt.color = ColorRGBA(r=0.0, g=1.0, b=1.0, a=0.5)
             tgt.pose.position.x = float(tgt_xy[0])
             tgt.pose.position.y = float(tgt_xy[1])
@@ -280,9 +256,7 @@ class TrajectoryFollower(Node):
             goal.id = 2000
             goal.type = Marker.CYLINDER
             goal.action = Marker.ADD
-            goal.scale.x = 0.25
-            goal.scale.y = 0.25
-            goal.scale.z = 0.02
+            goal.scale.x = 0.25; goal.scale.y = 0.25; goal.scale.z = 0.02
             goal.color = ColorRGBA(r=0.0, g=1.0, b=0.0, a=0.7) if self.goal_reached \
                          else ColorRGBA(r=1.0, g=0.5, b=0.0, a=0.6)
             goal.pose.position.x = float(goal_xy[0])
@@ -309,29 +283,24 @@ class TrajectoryFollower(Node):
                 now=time.monotonic()
             )
 
-            # Progress visualization index using proximity to current target point
+            # Progress vis index by proximity
             if self.current_idx < len(self.vis_traj_xy):
                 tx, ty = self.vis_traj_xy[self.current_idx]
-                dist_to_wp = math.hypot(tx - self.x, ty - self.y)
-                if dist_to_wp < self.waypoint_tolerance:
+                if math.hypot(tx - self.x, ty - self.y) < self.waypoint_tolerance:
                     self.current_idx += 1
-                    self.get_logger().info(
-                        f"ADV reached point {self.current_idx}/{len(self.vis_traj_xy)}"
-                    )
+                    self.get_logger().info(f"ADV reached {self.current_idx}/{len(self.vis_traj_xy)}")
                     if self.current_idx >= len(self.vis_traj_xy):
                         self.goal_reached = True
                         self.cmd_pub.publish(Twist())
                         self.get_logger().info("ADV goal reached. Stopping.")
                         return
 
-            # If controller says finished, stop and mark goal reached
             if status == "finished":
                 self.goal_reached = True
                 self.cmd_pub.publish(Twist())
                 self.get_logger().info("ADV finished by distance threshold. Stopping.")
                 return
 
-            # Publish cmd_vel
             cmd = Twist()
             cmd.linear.x = float(v)
             cmd.angular.z = float(w)
@@ -343,29 +312,25 @@ class TrajectoryFollower(Node):
             )
 
         else:
-            # ----- Pure Pursuit path (your original logic) -----
+            # ----- Pure Pursuit path -----
             # Advance waypoint if close
             if self.current_idx < len(self.traj_for_control):
                 cwp = self.traj_for_control[self.current_idx]
-                dist_to_wp = math.hypot(cwp["x"] - self.x, cwp["y"] - self.y)
-                if dist_to_wp < self.waypoint_tolerance:
+                if math.hypot(cwp["x"] - self.x, cwp["y"] - self.y) < self.waypoint_tolerance:
                     self.current_idx += 1
-                    self.get_logger().info(
-                        f"PP reached waypoint {self.current_idx}/{len(self.traj_for_control)}"
-                    )
+                    self.get_logger().info(f"PP reached {self.current_idx}/{len(self.traj_for_control)}")
                     if self.current_idx >= len(self.traj_for_control):
                         self.goal_reached = True
                         self.cmd_pub.publish(Twist())
                         self.get_logger().info("PP goal reached. Stopping.")
                         return
 
-            # Find lookahead point from remaining waypoints
+            # Find lookahead point
             lookahead_pt = None
             for i in range(self.current_idx, len(self.traj_for_control)):
                 px, py = self.traj_for_control[i]["x"], self.traj_for_control[i]["y"]
                 if math.hypot(px - self.x, py - self.y) >= self.lookahead_distance:
-                    lookahead_pt = (px, py)
-                    break
+                    lookahead_pt = (px, py); break
             if lookahead_pt is None:
                 last = self.traj_for_control[-1]
                 lookahead_pt = (last["x"], last["y"])
@@ -392,7 +357,6 @@ class TrajectoryFollower(Node):
             angular_vel = self.kp_ang * heading_error
             angular_vel = max(-self.max_angular_vel, min(self.max_angular_vel, angular_vel))
 
-            # Publish cmd_vel
             cmd = Twist()
             cmd.linear.x = float(linear_vel)
             cmd.angular.z = float(angular_vel)
@@ -417,6 +381,7 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
 
 
 
